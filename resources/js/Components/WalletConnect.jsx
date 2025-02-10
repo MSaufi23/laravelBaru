@@ -1,25 +1,35 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import Web3Modal from 'web3modal';
 
 export default function WalletConnect() {
     const [account, setAccount] = useState('');
     const [provider, setProvider] = useState(null);
     const [chainId, setChainId] = useState(null);
     const [error, setError] = useState('');
+    const [isConnecting, setIsConnecting] = useState(false);
 
     const SEPOLIA_CHAIN_ID = '0xaa36a7'; // Chain ID for Sepolia testnet
+    const SEPOLIA_RPC_URL = 'https://sepolia.infura.io/v3/';
 
     useEffect(() => {
-        if (window.ethereum) {
+        // Check if MetaMask is installed
+        if (typeof window.ethereum !== 'undefined') {
+            // Check if already connected
+            window.ethereum.request({ method: 'eth_accounts' })
+                .then(handleAccountsChanged)
+                .catch(console.error);
+
+            // Setup event listeners
             window.ethereum.on('accountsChanged', handleAccountsChanged);
             window.ethereum.on('chainChanged', handleChainChanged);
+            window.ethereum.on('disconnect', handleDisconnect);
         }
 
         return () => {
             if (window.ethereum) {
                 window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
                 window.ethereum.removeListener('chainChanged', handleChainChanged);
+                window.ethereum.removeListener('disconnect', handleDisconnect);
             }
         };
     }, []);
@@ -43,8 +53,19 @@ export default function WalletConnect() {
         }
     };
 
+    const handleDisconnect = () => {
+        setAccount('');
+        setProvider(null);
+        setError('Wallet disconnected');
+    };
+
     const connectWallet = async () => {
+        if (isConnecting) return;
+        
         try {
+            setIsConnecting(true);
+            setError('');
+
             if (!window.ethereum) {
                 setError('Please install MetaMask!');
                 return;
@@ -78,15 +99,17 @@ export default function WalletConnect() {
                                         symbol: 'ETH',
                                         decimals: 18
                                     },
-                                    rpcUrls: ['https://sepolia.infura.io/v3/'],
+                                    rpcUrls: [SEPOLIA_RPC_URL],
                                     blockExplorerUrls: ['https://sepolia.etherscan.io']
                                 }],
                             });
                         } catch (addError) {
                             setError('Failed to add Sepolia network.');
+                            return;
                         }
                     } else {
                         setError('Failed to switch to Sepolia network.');
+                        return;
                     }
                 }
             }
@@ -98,7 +121,9 @@ export default function WalletConnect() {
 
         } catch (err) {
             console.error('Error connecting wallet:', err);
-            setError('Failed to connect wallet.');
+            setError(err.message || 'Failed to connect wallet.');
+        } finally {
+            setIsConnecting(false);
         }
     };
 
@@ -119,9 +144,14 @@ export default function WalletConnect() {
             {!account ? (
                 <button
                     onClick={connectWallet}
-                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+                    disabled={isConnecting}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors ${
+                        isConnecting 
+                            ? 'bg-purple-400 cursor-not-allowed' 
+                            : 'bg-purple-600 hover:bg-purple-700'
+                    }`}
                 >
-                    Connect Wallet
+                    {isConnecting ? 'Connecting...' : 'Connect Wallet'}
                 </button>
             ) : (
                 <div className="flex items-center space-x-2">
